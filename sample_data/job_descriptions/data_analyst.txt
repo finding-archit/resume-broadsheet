@@ -1,0 +1,20 @@
+SAMPLE JOB DESCRIPTION - Data Analyst (fictional, for demonstration only)
+
+We are hiring a Data Analyst to turn business data into clear insights for decision makers.
+
+Responsibilities:
+- Collect, clean and analyze large datasets from multiple sources.
+- Build interactive dashboards and reports in Power BI or Tableau.
+- Write SQL queries to extract and aggregate data.
+- Perform statistical analysis and A/B testing to evaluate business experiments.
+- Present findings to stakeholders in a clear and concise way.
+
+Requirements:
+- Strong SQL skills and advanced Excel.
+- Experience with Python (Pandas, NumPy) for data analysis.
+- Knowledge of statistics and data visualization best practices.
+- Excellent communication and attention to detail.
+
+Nice to have:
+- Experience with ETL pipelines.
+- Familiarity with machine learning concepts.

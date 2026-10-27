@@ -1,0 +1,21 @@
+SAMPLE JOB DESCRIPTION - Python Backend Developer (fictional, for demonstration only)
+
+We are looking for a Python Backend Developer to design and build scalable REST APIs for our web platform.
+
+Responsibilities:
+- Design, develop and maintain backend services and RESTful APIs using Python and FastAPI or Django.
+- Model data and write efficient SQL queries for PostgreSQL databases.
+- Write unit tests and take part in code reviews.
+- Containerize services with Docker and deploy them to AWS through CI/CD pipelines.
+- Collaborate with frontend developers and product managers in an Agile team.
+
+Requirements:
+- Strong proficiency in Python and object-oriented programming.
+- Hands-on experience with FastAPI, Django or Flask.
+- Solid knowledge of SQL and PostgreSQL.
+- Experience with Git and GitHub.
+- Good communication and problem-solving skills.
+
+Preferred Qualifications:
+- Familiarity with Redis and microservices.
+- Experience with Kubernetes is a plus.

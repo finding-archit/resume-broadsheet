@@ -1,0 +1,21 @@
+SAMPLE JOB DESCRIPTION - Machine Learning Engineer (fictional, for demonstration only)
+
+We are looking for a Machine Learning Engineer to build, train and deploy ML models that power product features.
+
+Responsibilities:
+- Develop machine learning and deep learning models for classification, recommendation and NLP tasks.
+- Build data pipelines and perform feature engineering on structured and text data.
+- Train and evaluate models with PyTorch or TensorFlow and scikit-learn.
+- Deploy models to production as APIs using Docker and cloud services (AWS or GCP).
+- Monitor model performance and run experiments.
+
+Requirements:
+- Strong programming skills in Python.
+- Solid understanding of machine learning algorithms, statistics and data structures.
+- Hands-on experience with PyTorch or TensorFlow, Pandas and NumPy.
+- Experience with natural language processing, including transformers and embeddings.
+- Proficiency with Git and Linux.
+
+Preferred:
+- Experience with large language models, LangChain or retrieval-augmented generation.
+- Familiarity with MLOps and Kubernetes.

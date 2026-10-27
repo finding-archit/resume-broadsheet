@@ -1,0 +1,28 @@
+PRIYA SHARMA (fictional sample resume)
+Backend Developer | priya.sample@example.com | +00 00000 00000
+
+SUMMARY
+Computer Science graduate with internship experience building REST APIs in Python. Interested in backend engineering, databases and cloud deployment.
+
+SKILLS
+Languages: Python, Java, SQL, JavaScript
+Frameworks: FastAPI, Flask, React.js
+Databases: PostgreSQL, MongoDB
+Tools: Git, GitHub, Docker, Postman, Linux, VS Code
+
+EXPERIENCE
+Software Engineering Intern - Example Tech Pvt. Ltd. (Jun 2024 - Dec 2024)
+- Developed RESTful APIs with FastAPI and PostgreSQL serving 5,000 daily requests.
+- Wrote unit tests with pytest, raising code coverage from 45% to 80%.
+- Containerized three services with Docker and documented the deployment process.
+- Collaborated with a team of five developers using Agile sprints and code reviews.
+
+PROJECTS
+Library Management System - Python, Flask, SQLite
+- Built a web application with role-based login, book search and issue tracking.
+Resume Matcher - Python, scikit-learn, NLP
+- Implemented TF-IDF and cosine similarity to compare resumes with job descriptions.
+
+EDUCATION
+B.Tech in Computer Science and Engineering, Example Institute of Technology (2021 - 2025)
+Coursework: Data Structures and Algorithms, Object-Oriented Programming, Database Management Systems, Operating Systems.

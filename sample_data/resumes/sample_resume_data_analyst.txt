@@ -1,0 +1,22 @@
+ARJUN MEHTA (fictional sample resume)
+Data Analyst | arjun.sample@example.com
+
+PROFILE
+Detail-oriented data analyst with experience cleaning datasets, writing SQL and building dashboards that support business decisions.
+
+TECHNICAL SKILLS
+SQL, MySQL, Python (Pandas, NumPy, Matplotlib), Advanced Excel, Power BI, Statistics
+
+EXPERIENCE
+Data Analyst Intern - Sample Retail Analytics (Jan 2024 - Jul 2024)
+- Wrote SQL queries on a MySQL database to analyze 2 million sales records.
+- Built Power BI dashboards tracking weekly revenue and inventory for regional managers.
+- Automated monthly reporting in Python with Pandas, saving 6 hours per month.
+- Presented insights on customer churn to stakeholders.
+
+PROJECTS
+Customer Segmentation - Python, Pandas, scikit-learn
+- Applied k-means clustering to segment customers by purchasing behaviour.
+
+EDUCATION
+B.Sc. in Statistics, Example University (2020 - 2023)

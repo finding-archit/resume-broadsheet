@@ -1,0 +1,21 @@
+SAMPLE JOB DESCRIPTION - Frontend Developer (fictional, for demonstration only)
+
+We need a Frontend Developer to build fast, accessible and responsive user interfaces.
+
+Responsibilities:
+- Build reusable UI components with React and TypeScript.
+- Translate Figma designs into pixel-accurate, responsive pages using HTML, CSS and Tailwind CSS.
+- Integrate the frontend with REST APIs and GraphQL services.
+- Manage application state with Redux or React context.
+- Write unit tests with Jest and React Testing Library.
+
+Requirements:
+- Strong knowledge of JavaScript (ES6+), HTML5 and CSS3.
+- Proven experience with React.js.
+- Understanding of web accessibility (WCAG) and responsive design.
+- Experience with Git and modern build tools such as Vite or Webpack.
+- Good teamwork and communication skills.
+
+Nice to have:
+- Experience with Next.js.
+- Familiarity with Node.js.
