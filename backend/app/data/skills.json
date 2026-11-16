@@ -1,5 +1,5 @@
 {
-  "_comment": "Skill taxonomy. 'aliases' match case-insensitively; 'exact_aliases' match case-sensitively and are used for short or ambiguous names (C, R, Go, ML, AI) so ordinary words are not mistaken for skills. The canonical 'name' is always matched case-insensitively unless it is listed in exact_aliases only.",
+  "_comment": "Skill taxonomy. 'aliases' match case-insensitively; 'exact_aliases' match case-sensitively and are used for short or ambiguous names (C, R, Go, ML, AI) so ordinary words are not mistaken for skills. The canonical 'name' is always matched case-insensitively unless 'case_sensitive' is true. 'ambiguous': true marks skills whose exact aliases are also ordinary English words (Swift, Express, Go, Spark, Excel); those exact aliases only count with technical context (a list, 'in Go', 'Go developer'). Aliases must be specific enough not to fire on generic words.",
   "categories": {
     "Programming Languages": [
       {
@@ -71,7 +71,8 @@
         ],
         "exact_aliases": [
           "Go"
-        ]
+        ],
+        "ambiguous": true
       },
       {
         "name": "Rust",
@@ -90,7 +91,8 @@
         "case_sensitive": true,
         "exact_aliases": [
           "Swift"
-        ]
+        ],
+        "ambiguous": true
       },
       {
         "name": "PHP",
@@ -188,7 +190,8 @@
         ],
         "exact_aliases": [
           "Express"
-        ]
+        ],
+        "ambiguous": true
       },
       {
         "name": "Django",
@@ -404,9 +407,7 @@
       },
       {
         "name": "PyTorch",
-        "aliases": [
-          "torch"
-        ]
+        "aliases": []
       },
       {
         "name": "Keras",
@@ -439,7 +440,8 @@
         ],
         "exact_aliases": [
           "Excel"
-        ]
+        ],
+        "ambiguous": true
       },
       {
         "name": "Computer Vision",
@@ -465,9 +467,12 @@
         "aliases": [
           "apache spark",
           "pyspark",
-          "spark",
           "hadoop"
-        ]
+        ],
+        "exact_aliases": [
+          "Spark"
+        ],
+        "ambiguous": true
       },
       {
         "name": "ETL",
@@ -482,7 +487,7 @@
         "aliases": [
           "ab testing",
           "a/b tests",
-          "experimentation"
+          "split testing"
         ]
       }
     ],
@@ -730,7 +735,7 @@
         "name": "Data Structures and Algorithms",
         "aliases": [
           "data structures",
-          "algorithms",
+          "algorithms and data structures",
           "dsa"
         ]
       },
@@ -747,8 +752,13 @@
       },
       {
         "name": "Webpack",
+        "aliases": []
+      },
+      {
+        "name": "Vite",
         "aliases": [
-          "vite"
+          "vitejs",
+          "vite.js"
         ]
       }
     ],
@@ -816,8 +826,9 @@
       {
         "name": "Stakeholder Management",
         "aliases": [
-          "stakeholders",
-          "stakeholder"
+          "stakeholder engagement",
+          "managing stakeholders",
+          "stakeholder communication"
         ]
       }
     ]

@@ -5,6 +5,7 @@ export const MAX_FILE_SIZE_MB = 5
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 export const ALLOWED_EXTENSIONS = ['.pdf', '.docx']
 export const MIN_RESUME_CHARS = 50
+export const MIN_RESUME_WORDS = 10
 export const MIN_JD_CHARS = 50
 export const MIN_JD_WORDS = 10
 
@@ -36,8 +37,8 @@ export function validateFile(file) {
 export function validateResumeText(text) {
   const trimmed = (text || '').trim()
   if (!trimmed) return 'Please upload a resume or paste your resume text.'
-  if (trimmed.length < MIN_RESUME_CHARS) {
-    return `The resume text is too short (${trimmed.length} characters). Please paste at least ${MIN_RESUME_CHARS} characters.`
+  if (trimmed.length < MIN_RESUME_CHARS || countWords(trimmed) < MIN_RESUME_WORDS) {
+    return `The resume text is too short. Please paste at least ${MIN_RESUME_WORDS} words (${MIN_RESUME_CHARS} characters).`
   }
   return null
 }

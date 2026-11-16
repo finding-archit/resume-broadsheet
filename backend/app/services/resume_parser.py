@@ -80,11 +80,22 @@ def validate_upload(filename: str, content: bytes) -> str:
     return ext
 
 
+def _import_pymupdf():
+    try:
+        import pymupdf
+    except ImportError:  # PyMuPDF releases before 1.24.3 only provide "fitz"
+        import fitz as pymupdf
+    return pymupdf
+
+
 def _extract_pdf(path: Path) -> str:
-    import fitz  # PyMuPDF
+    pymupdf = _import_pymupdf()
 
     try:
-        doc = fitz.open(path)
+        # Open from bytes, not the path: if opening fails, PyMuPDF's exception
+        # keeps a path-opened file handle alive, and Windows then refuses to
+        # delete the temporary file.
+        doc = pymupdf.open(stream=path.read_bytes(), filetype="pdf")
     except Exception as exc:  # PyMuPDF raises several internal error types
         raise CorruptedDocumentError(
             "The PDF could not be opened. It may be corrupted or incomplete."

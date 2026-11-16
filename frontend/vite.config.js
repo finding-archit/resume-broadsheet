@@ -24,9 +24,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
+        // Vite 8 (Rolldown) requires the function form.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return 'react'
+          if (/[\\/](recharts|d3-[a-z]+|victory-vendor)[\\/]/.test(id)) return 'charts'
+          return undefined
         },
       },
     },

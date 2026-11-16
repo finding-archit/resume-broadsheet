@@ -7,7 +7,8 @@ from fastapi.concurrency import run_in_threadpool
 
 from app import __version__
 from app.config import settings
-from app.schemas.analysis import AnalysisResponse, ErrorResponse, HealthResponse
+from app.schemas.analysis import AnalysisResponse, ConfigResponse, ErrorResponse, HealthResponse
+from app.services import matching_engine as me
 from app.services.analyzer import InputValidationError, analyze
 from app.services.resume_parser import FileTooLargeError, ResumeParseError, extract_text_from_file
 from app.services.skill_extractor import get_taxonomy
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api")
 
 _ERRORS = {
     400: {"model": ErrorResponse, "description": "Missing or conflicting resume input"},
-    413: {"model": ErrorResponse, "description": "File too large"},
+    413: {"model": ErrorResponse, "description": "File or request body too large"},
     415: {"model": ErrorResponse, "description": "Unsupported file type"},
     422: {"model": ErrorResponse, "description": "Unreadable document or invalid text"},
 }
@@ -28,6 +29,28 @@ _ERRORS = {
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
     return {"status": "ok", "version": __version__, "skills_in_taxonomy": len(get_taxonomy())}
+
+
+@router.get("/config", response_model=ConfigResponse, tags=["System"])
+def config():
+    """Scoring weights, bands and input limits, so clients need not hard-code them."""
+    w_t, w_s = me.normalized_weights()
+    categories: dict[str, int] = {}
+    for skill in get_taxonomy():
+        categories[skill.category] = categories.get(skill.category, 0) + 1
+    return {
+        "version": __version__,
+        "weights": {"tfidf": round(w_t, 4), "skill_coverage": round(w_s, 4)},
+        "bands": me.bands(),
+        "max_file_size_mb": settings.max_file_size_bytes // (1024 * 1024),
+        "min_resume_chars": settings.min_resume_chars,
+        "min_resume_words": settings.min_resume_words,
+        "min_job_description_chars": settings.min_job_description_chars,
+        "min_job_description_words": settings.min_job_description_words,
+        "skills_in_taxonomy": len(get_taxonomy()),
+        "categories": [{"name": name, "count": count} for name, count in categories.items()],
+        "keyword_list_cap": settings.keyword_list_cap,
+    }
 
 
 async def _read_limited(upload: UploadFile) -> bytes:

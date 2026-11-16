@@ -4,10 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Compare a resume with a job description using NLP: skill extraction, TF-IDF and cosine similarity." />
-    <title>AI Resume Matcher</title>
+    <meta name="description" content="The Resume Matcher: compare a resume with a job description using NLP: skill extraction, TF-IDF and cosine similarity." />
+    <title>The Resume Matcher</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem('rm-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'morning')
+        document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-800 antialiased">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

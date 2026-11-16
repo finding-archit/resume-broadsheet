@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
-import { FileText, UploadCloud, X, RefreshCw } from 'lucide-react'
+import { FileText, RefreshCw, X } from 'lucide-react'
 import { formatBytes } from '../utils/format.js'
 import { MAX_FILE_SIZE_MB, validateFile } from '../utils/validation.js'
 
 export default function FileDropzone({ file, onChange, error, onError, describedBy }) {
   const inputRef = useRef(null)
+  // dragenter/dragleave also fire for child elements; a depth counter avoids flicker.
+  const depth = useRef(0)
   const [dragging, setDragging] = useState(false)
 
   const pick = (selected) => {
@@ -37,25 +39,28 @@ export default function FileDropzone({ file, onChange, error, onError, described
 
   if (file) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
+      <div className="flex items-center gap-4 border-2 border-rule bg-card p-4">
         {input}
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-indigo-600 ring-1 ring-indigo-200">
-          <FileText size={20} aria-hidden="true" />
+        <span className="grid h-14 w-11 shrink-0 place-items-center border-2 border-rule bg-paper font-mono text-[10px] font-bold uppercase">
+          {file.name.split('.').pop()}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900" title={file.name}>{file.name}</p>
-          <p className="text-xs text-slate-500">{formatBytes(file.size)}</p>
+          <p className="truncate font-display text-lg" title={file.name}>{file.name}</p>
+          <p className="font-mono text-xs text-muted">{formatBytes(file.size)} · ready to analyse</p>
         </div>
-        <button type="button" onClick={openPicker} className="btn-ghost px-2.5 py-1.5" aria-label="Replace file">
-          <RefreshCw size={16} aria-hidden="true" /> <span className="hidden sm:inline">Replace</span>
+        <button type="button" onClick={openPicker} className="btn-link" aria-label="Replace file">
+          <RefreshCw size={13} aria-hidden="true" /> <span className="hidden sm:inline">Replace</span>
         </button>
         <button
           type="button"
-          onClick={() => { onChange(null); onError(null) }}
-          className="btn-ghost px-2.5 py-1.5 text-rose-600 hover:bg-rose-50"
+          onClick={() => {
+            onChange(null)
+            onError(null)
+          }}
+          className="btn-link hover:text-accent"
           aria-label="Remove file"
         >
-          <X size={16} aria-hidden="true" /> <span className="hidden sm:inline">Remove</span>
+          <X size={13} aria-hidden="true" /> <span className="hidden sm:inline">Remove</span>
         </button>
       </div>
     )
@@ -63,26 +68,40 @@ export default function FileDropzone({ file, onChange, error, onError, described
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        depth.current += 1
+        setDragging(true)
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDragLeave={() => {
+        depth.current = Math.max(0, depth.current - 1)
+        if (depth.current === 0) setDragging(false)
+      }}
       onDrop={(e) => {
         e.preventDefault()
+        depth.current = 0
         setDragging(false)
         pick(e.dataTransfer.files?.[0])
       }}
-      className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-        error ? 'border-rose-300 bg-rose-50/40' : dragging ? 'border-indigo-400 bg-indigo-50' : 'border-slate-300 bg-slate-50'
+      className={`group relative border-2 border-dashed px-6 py-12 text-center transition-colors ${
+        error ? 'border-accent bg-accent/5' : dragging ? 'border-accent bg-accent/10' : 'border-rule/50 bg-paper hover:border-rule'
       }`}
     >
       {input}
-      <UploadCloud className="mx-auto text-indigo-500" size={32} aria-hidden="true" />
-      <p className="mt-3 text-sm text-slate-700">
-        Drag and drop your resume here, or{' '}
-        <button type="button" onClick={openPicker} className="font-semibold text-indigo-600 underline-offset-2 hover:underline">
-          browse files
+      <FileText className={`mx-auto transition-transform ${dragging ? '-translate-y-1 text-accent' : 'text-ink2'}`} size={34} strokeWidth={1.4} aria-hidden="true" />
+      <p className="mt-4 font-display text-xl">
+        {dragging ? 'Drop it on the desk.' : 'Drop the manuscript here'}
+      </p>
+      <p className="mt-1 text-sm text-ink2">
+        or{' '}
+        <button type="button" onClick={openPicker} className="font-semibold text-ink underline decoration-accent decoration-2 underline-offset-4 hover:text-accent">
+          browse your files
         </button>
       </p>
-      <p className="mt-1 text-xs text-slate-500">PDF or DOCX, up to {MAX_FILE_SIZE_MB} MB. Scanned (image-only) PDFs are not supported.</p>
+      <p className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
+        PDF or DOCX · up to {MAX_FILE_SIZE_MB} MB · text-based, not scanned
+      </p>
     </div>
   )
 }

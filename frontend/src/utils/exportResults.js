@@ -1,17 +1,18 @@
 // Export helpers. CSV and PDF are both built from buildReportSections(), which
 // reads values straight from the API response, so exported numbers always
-// match what the dashboard shows.
+// match what the report shows.
 import { formatPercent } from './format.js'
 
 const DISCLAIMER =
   'This score measures text and skill similarity only. It is not a probability of being hired.'
 
+const EVIDENCE_LABEL = { demonstrated: 'shown in use', listed: 'listed only', inferred: 'inferred' }
+
 export function buildReportSections(result, generatedAt = new Date()) {
   const method = result.scoring_method || {}
   const source =
-    result.input_source?.type === 'file'
-      ? `File: ${result.input_source.filename}`
-      : 'Pasted text'
+    result.input_source?.type === 'file' ? `File: ${result.input_source.filename}` : 'Pasted text'
+  const cap = result.score_cap?.applied ? result.score_cap : null
 
   return [
     {
@@ -26,6 +27,10 @@ export function buildReportSections(result, generatedAt = new Date()) {
         ['Job description skills detected', String(result.job_skill_count)],
         ['Resume skills detected', String(result.resume_skill_count)],
         ['Extracted resume text length', `${result.extracted_resume_text_length} characters`],
+        ...(cap ? [['Score cap', `${cap.reason} Uncapped score: ${formatPercent(cap.uncapped_score)}`]] : []),
+        ...(result.copied_text_removed?.lines
+          ? [['Copied text removed', `${result.copied_text_removed.lines} line(s) copied from the job description were ignored`]]
+          : []),
       ],
     },
     {
@@ -34,6 +39,7 @@ export function buildReportSections(result, generatedAt = new Date()) {
         ['Overall formula', method.overall_formula || ''],
         ['TF-IDF formula', method.tfidf_formula || ''],
         ['Skill coverage formula', method.skill_coverage_formula || ''],
+        ...(method.adjustments ? [['Adjustments', method.adjustments]] : []),
         ['Disclaimer', DISCLAIMER],
       ],
     },
@@ -41,7 +47,12 @@ export function buildReportSections(result, generatedAt = new Date()) {
       title: 'Matched skills',
       rows: result.matched_skills.map((s) => [
         s.name,
-        `${s.category}${s.implied ? ` (inferred from ${s.implied_by.join(', ')})` : ''}`,
+        [
+          s.category,
+          s.implied ? `inferred from ${s.implied_by.join(', ')}` : EVIDENCE_LABEL[s.evidence],
+        ]
+          .filter(Boolean)
+          .join('; '),
       ]),
     },
     {
@@ -70,6 +81,13 @@ export function buildReportSections(result, generatedAt = new Date()) {
       ]),
     },
     {
+      title: 'Similarity contributions',
+      rows: (result.similarity_terms || []).map((t) => [
+        t.term,
+        `${(t.contribution * 100).toFixed(1)}% of the TF-IDF similarity`,
+      ]),
+    },
+    {
       title: 'Recommendations',
       rows: result.recommendations.map((r) => [
         `[${r.priority.toUpperCase()}] ${r.title}`,
@@ -93,7 +111,7 @@ export function buildCsv(result, generatedAt) {
     }
   }
   // Byte-order mark so Excel opens UTF-8 correctly.
-  return '﻿' + lines.join('\r\n')
+  return '\uFEFF' + lines.join('\r\n')
 }
 
 function triggerDownload(blob, filename) {
@@ -114,35 +132,91 @@ export function downloadCsv(result) {
   triggerDownload(blob, `resume-match-report-${stamp()}.csv`)
 }
 
+// Morning-edition palette for the printed report.
+const INK = [23, 21, 18]
+const PAPER = [243, 238, 228]
+const ACCENT = [214, 57, 34]
+const BLUEPRINT = [40, 62, 104]
+const MOSS = [44, 96, 68]
+const MUTED = [120, 112, 100]
+
+// jsPDF's built-in fonts only cover Latin-1, so typographic symbols are simplified.
+const latin1 = (s) =>
+  String(s)
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2192/g, '->')
+    .replace(/\u00D7/g, 'x')
+    .replace(/[^\x00-\xFF]/g, '')
+
 export async function downloadPdf(result) {
   // Loaded on demand to keep the initial bundle small.
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
-    import('jspdf'),
-    import('jspdf-autotable'),
-  ])
+  const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  const margin = 40
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('AI Resume Matcher - Analysis Report', margin, 50)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(100)
-  doc.text(DISCLAIMER, margin, 66)
-  doc.setTextColor(0)
+  const W = doc.internal.pageSize.getWidth()
+  const M = 44
 
-  let y = 82
+  doc.setFillColor(...PAPER)
+  doc.rect(0, 0, W, 190, 'F')
+  doc.setTextColor(...MUTED)
+  doc.setFont('courier', 'bold')
+  doc.setFontSize(8)
+  doc.text(`ANALYSIS REPORT  -  ${new Date().toLocaleDateString('en-GB').toUpperCase()}`, M, 34)
+  doc.setTextColor(...INK)
+  doc.setFont('times', 'bolditalic')
+  doc.setFontSize(30)
+  doc.text('The Resume Matcher', M, 66)
+  doc.setDrawColor(...INK)
+  doc.setLineWidth(2)
+  doc.line(M, 78, W - M, 78)
+  doc.setLineWidth(0.6)
+  doc.line(M, 82, W - M, 82)
+
+  doc.setFont('times', 'bold')
+  doc.setFontSize(54)
+  doc.text(result.overall_match_score.toFixed(1), M, 140)
+  doc.setFont('courier', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(...ACCENT)
+  doc.text(result.match_level.toUpperCase(), M, 162)
+  doc.setTextColor(...MUTED)
+  doc.setFont('times', 'italic')
+  doc.setFontSize(9)
+  doc.text(latin1(DISCLAIMER), M, 178)
+
+  const bar = (label, value, y, color) => {
+    const x = 260
+    const w = W - M - x
+    doc.setFont('courier', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...MUTED)
+    doc.text(label, x, y - 6)
+    doc.setTextColor(...INK)
+    doc.text(value === null || value === undefined ? 'N/A' : `${value.toFixed(1)}%`, W - M, y - 6, { align: 'right' })
+    doc.setFillColor(225, 218, 205)
+    doc.rect(x, y, w, 8, 'F')
+    if (value) {
+      doc.setFillColor(...color)
+      doc.rect(x, y, (w * Math.min(value, 100)) / 100, 8, 'F')
+    }
+  }
+  bar('TF-IDF SIMILARITY', result.tfidf_similarity, 116, BLUEPRINT)
+  bar('SKILL COVERAGE', result.skill_coverage, 146, MOSS)
+
+  let y = 212
   for (const section of buildReportSections(result)) {
     autoTable(doc, {
       startY: y,
-      head: [[section.title, '']],
-      body: section.rows.length ? section.rows : [['None', '']],
-      margin: { left: margin, right: margin },
-      styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
-      headStyles: { fillColor: [79, 70, 229] },
+      head: [[latin1(section.title), '']],
+      body: section.rows.length ? section.rows.map((r) => r.map(latin1)) : [['None', '']],
+      margin: { left: M, right: M },
+      theme: 'plain',
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 4, overflow: 'linebreak', textColor: INK, lineColor: [210, 202, 188], lineWidth: { bottom: 0.5 } },
+      headStyles: { font: 'times', fontStyle: 'bold', fontSize: 12, textColor: INK, lineColor: INK, lineWidth: { bottom: 1.5 } },
       columnStyles: { 0: { cellWidth: 170, fontStyle: 'bold' } },
     })
-    y = doc.lastAutoTable.finalY + 14
+    y = doc.lastAutoTable.finalY + 16
   }
   doc.save(`resume-match-report-${stamp()}.pdf`)
 }

@@ -36,7 +36,7 @@ flowchart TD
 | DOCX | python-docx | Paragraphs and table cells (many templates use tables for columns); merged cells de-duplicated |
 | Text | – | Used as-is |
 
-Validation runs before parsing: extension allow-list (`.pdf`, `.docx`), size ≤ 5 MB (checked while reading the upload, so a huge file is never fully buffered) and magic bytes (`%PDF-`, `PK\x03\x04`). A renamed `.exe` or a legacy `.doc` is rejected before any parser touches it.
+Validation runs before parsing: extension allow-list (`.pdf`, `.docx`), size ≤ 5 MB (a middleware rejects oversized request bodies with 413 before they are parsed, and uploads up to the limit stay in memory) and magic bytes (`%PDF-`, `PK\x03\x04`). A renamed `.exe` or a legacy `.doc` is rejected before any parser touches it.
 
 ## 3. Preprocessing decisions
 
@@ -44,19 +44,22 @@ Validation runs before parsing: extension allow-list (`.pdf`, `.docx`), size ≤
 |---|---|
 | NFKC normalization | Converts ligatures (`ﬁ` → `fi`) and full-width characters produced by PDF exports |
 | Re-join `word-\nword` | PDF line hyphenation would otherwise split words |
-| Remove URLs, e-mails, phone numbers | Personal data and no matching signal |
+| Remove URLs, e-mails, phone numbers | Personal data and no matching signal (year ranges such as "2021 - 2025" are kept) |
 | Keep original case for skill matching | Distinguishes *Go*/*R*/*C* (languages) from ordinary words |
 | Custom tokenizer | Standard tokenizers turn `C++` into `c` and `.NET` into `net`; ours keeps `c++`, `c#`, `.net`, `node.js`, `ci/cd` |
 | Stop words | scikit-learn English list + generic job-post words; no NLTK download needed |
-| No stemming/lemmatization | Stemming damages technical terms (`pandas` → `panda`); skill canonicalization already unifies the important variants |
+| Snowball stemming for ordinary words only | "cleaning"/"clean" and "analyzed"/"analyze" should match; skill tokens and technical terms (`pandas`, `node.js`) are never stemmed, so nothing like `pandas` → `panda` happens |
 
 ## 4. Skill extraction
 
-- **Taxonomy:** `backend/app/data/skills.json` holds 117 skills in 8 categories: Programming Languages, Web Development, Databases, Data Science & ML, NLP & Generative AI, Cloud & DevOps, Software Engineering Tools, and Soft Skills.
+- **Taxonomy:** `backend/app/data/skills.json` holds 118 skills in 8 categories: Programming Languages, Web Development, Databases, Data Science & ML, NLP & Generative AI, Cloud & DevOps, Software Engineering Tools, and Soft Skills.
 - **Aliases:** `JS`/`ES6` → JavaScript, `ML` → Machine Learning, `NLP` → Natural Language Processing, `Amazon Web Services` → AWS, `k8s` → Kubernetes, `sklearn` → scikit-learn.
 - **Boundaries:** the regex lookarounds `(?<![A-Za-z0-9_+#.\-])` and `(?![A-Za-z0-9_+#]|\.[A-Za-z0-9])` replace `\b`, which treats `+` and `#` as boundaries and would match `C` inside `C++`.
 - **Case-sensitive aliases:** C, R, Go, Swift, Excel, Express, ML, AI and JS are matched case-sensitively. One- and two-letter names also reject a following `-`, `&` or `'`, so "C-level", "Go-to" and "R&D" are ignored.
 - **Overlap resolution:** the longest match wins, so "SQL Server" is Microsoft SQL Server, not also SQL.
+- **Ambiguous words:** Swift, Express, Go, Spark and Excel are flagged `ambiguous` and count only with technical context (a list, "in Go", "Swift apps", "Excel and pivot tables"), so "Swift delivery" or "Spark joy" are ignored. One-letter names are also rejected when they look like a person's initial ("Priya R. Sharma").
+- **Negation:** a mention preceded in the same clause by a cue such as "no experience with", "not familiar with" or "without" does not count, in either document.
+- **Evidence (resume only):** a skill is *demonstrated* if it appears in a descriptive segment (a sentence or bullet of 6+ words that is not mostly skill names and not a "Label: a, b, c" list), *listed* otherwise, and *inferred* if only implied.
 - **Implied skills (resume only):** PostgreSQL/MySQL → SQL, Next.js → React, PyTorch → Deep Learning. These are marked *inferred*, and the user is advised to state them explicitly.
 - **Importance (JD only):**
   - Section headers set the context: "Requirements" → required; "Preferred / Nice to have" → preferred; a neutral header such as "Responsibilities:" resets it.
@@ -92,6 +95,8 @@ Overall               = 0.60 × TF-IDF + 0.40 × Coverage                     (=
 
 - **Shared rounding:** the overall score is computed from the same rounded components that the dashboard shows and the exports contain, so anyone can reproduce it by hand.
 - **Clamping:** all scores are clamped to the range 0–100.
+- **Copied text:** résumé lines whose 4-word shingles are ≥ 70 % contained in the JD (or short lines copied verbatim) are removed before analysis and reported.
+- **Keyword-list cap:** with fewer than 2 descriptive segments the overall score is capped at 39.9, below "Good match"; the uncapped value is reported. A bare list of the backend JD's skills scores 39.9 instead of 75.3.
 - **Match bands:** Strong ≥ 60, Good ≥ 40, Partial ≥ 20, Low < 20. They were calibrated after observing that closely related real documents reach about 20–45 % TF-IDF similarity. They are descriptive labels, not predictions.
 
 ## 7. Recommendations
@@ -116,9 +121,9 @@ The engine never claims the candidate has a skill, and never suggests adding cer
 
 | Resume ↓ / Job → | Python Backend | Data Analyst | ML Engineer | Frontend |
 |---|---|---|---|---|
-| Python developer | **43.0** | 6.6 | 15.3 | 19.1 |
-| Data analyst | 8.5 | **46.1** | 11.1 | 0.0 |
-| Chef (unrelated) | 0.0 | 0.5 | 0.0 | 0.0 |
+| Python developer | **46.3** | 6.9 | 17.3 | 20.1 |
+| Data analyst | 8.9 | **48.1** | 11.1 | 0.4 |
+| Chef (unrelated) | 1.7 | 1.0 | 1.1 | 2.0 |
 
 The diagonal (intended matches) is clearly separated from cross-domain and unrelated pairs. Partially related pairs, such as a Python developer against an ML Engineer post, fall in between. This ordering is also checked by automated tests.
 

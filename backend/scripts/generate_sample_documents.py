@@ -7,7 +7,11 @@ Output: sample_data/resumes/*.pdf and *.docx
 from pathlib import Path
 
 import docx
-import fitz  # PyMuPDF
+
+try:
+    import pymupdf
+except ImportError:  # PyMuPDF releases before 1.24.3 only provide "fitz"
+    import fitz as pymupdf
 
 RESUME_DIR = Path(__file__).resolve().parents[2] / "sample_data" / "resumes"
 
@@ -17,7 +21,7 @@ def is_heading(line: str) -> bool:
 
 
 def write_pdf(text: str, out: Path) -> None:
-    doc = fitz.open()
+    doc = pymupdf.open()
     page = doc.new_page()
     y = 56
     for raw in text.splitlines():
@@ -27,7 +31,7 @@ def write_pdf(text: str, out: Path) -> None:
             continue
         size, font = (11.5, "helvetica-bold") if is_heading(line) else (10, "helvetica")
         # Wrap long lines by width using PyMuPDF's text box.
-        rect = fitz.Rect(56, y, 540, y + 200)
+        rect = pymupdf.Rect(56, y, 540, y + 200)
         used = page.insert_textbox(rect, line, fontsize=size, fontname=font)
         height = 200 - used if used >= 0 else 14
         y += max(height, size + 4) + 2

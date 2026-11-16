@@ -154,3 +154,147 @@ def test_standalone_mention_keeps_skill_required():
 
     jd = extract_skills("AWS or GCP.\nDeep GCP expertise is essential.", detect_importance=True)
     assert satisfied_by_alternative(jd["Google Cloud Platform"], {"AWS"}) == []
+
+
+# ---------- person-name initials (C, R) ----------
+
+@pytest.mark.parametrize(
+    "text", ["Priya R. Sharma, backend developer", "John C. Smith", "R. Verma\nHead Chef"]
+)
+def test_initials_are_not_languages(text):
+    assert not {"C", "R"} & names(text)
+
+
+def test_single_letter_languages_still_match_in_lists():
+    assert {"C", "Python"} <= names("Languages: C, Python")
+    assert {"C", "C++"} <= names("C/C++")
+    assert {"Go", "R", "Python"} <= names("Languages: Go, R, Python")
+
+
+# ---------- ambiguous English words ----------
+
+@pytest.mark.parametrize(
+    "text,skill",
+    [
+        ("Swift delivery of reports.", "Swift"),
+        ("Express interest in roles.", "Express.js"),
+        ("Spark joy.", "Big Data"),
+        ("Excel at teamwork.", "Microsoft Excel"),
+        ("Go to the office early.", "Go"),
+    ],
+)
+def test_ambiguous_words_need_technical_context(text, skill):
+    assert skill not in names(text)
+
+
+@pytest.mark.parametrize(
+    "text,skill",
+    [
+        ("Advanced Excel and pivot tables", "Microsoft Excel"),
+        ("Languages: Go, R, Python", "Go"),
+        ("Built services in Go.", "Go"),
+        ("APIs with Express and MongoDB", "Express.js"),
+        ("iOS apps in Swift", "Swift"),
+        ("Spark streaming jobs on a Hadoop cluster", "Big Data"),
+        ("Pipelines in PySpark", "Big Data"),
+        ("Excel formulas for budgeting", "Microsoft Excel"),
+    ],
+)
+def test_ambiguous_words_with_technical_context(text, skill):
+    assert skill in names(text)
+
+
+# ---------- noisy aliases ----------
+
+@pytest.mark.parametrize(
+    "text,skill",
+    [
+        ("Torch the creme brulee before serving.", "PyTorch"),
+        ("Culture of experimentation in the kitchen.", "A/B Testing"),
+        ("Reported weekly to stakeholders.", "Stakeholder Management"),
+        ("Studied sorting algorithms in class.", "Data Structures and Algorithms"),
+        ("Bundled the app with Vite.", "Webpack"),
+    ],
+)
+def test_noisy_aliases_removed(text, skill):
+    assert skill not in names(text)
+
+
+@pytest.mark.parametrize(
+    "text,skill",
+    [
+        ("Ran split testing on landing pages", "A/B Testing"),
+        ("Led stakeholder engagement for the launch", "Stakeholder Management"),
+        ("Coursework: algorithms and data structures", "Data Structures and Algorithms"),
+        ("Bundled the app with Vite.", "Vite"),
+        ("Configured vite.js builds", "Vite"),
+    ],
+)
+def test_replacement_aliases_match(text, skill):
+    assert skill in names(text)
+
+
+def test_taxonomy_size_and_vite_category():
+    from app.services.skill_extractor import get_taxonomy
+
+    taxonomy = {s.name: s for s in get_taxonomy()}
+    assert len(taxonomy) == 118
+    assert taxonomy["Vite"].category == "Software Engineering Tools"
+
+
+# ---------- negation ----------
+
+def test_negation_applies_to_whole_clause():
+    result = extract_skills("No experience with Java or Kubernetes.")
+    assert "Java" not in result and "Kubernetes" not in result
+
+
+@pytest.mark.parametrize(
+    "text,negated,kept",
+    [
+        ("Never used Docker; deployed with Kubernetes.", "Docker", "Kubernetes"),
+        ("Not familiar with Rust, but productive in Python.", "Rust", "Python"),
+        ("Unfamiliar with Java. Built APIs in Python.", "Java", "Python"),
+        ("Lack of exposure to AWS\nDeployed Docker images", "AWS", "Docker"),
+    ],
+)
+def test_negation_is_limited_to_its_clause(text, negated, kept):
+    found = names(text)
+    assert negated not in found and kept in found
+
+
+def test_skill_counts_when_any_mention_is_not_negated():
+    result = extract_skills("No experience with Java. Later wrote Java services.")
+    assert result["Java"].count == 1 and result["Java"].negated_count == 1
+
+
+def test_negated_mentions_are_reported():
+    from app.services.skill_extractor import detect_mentions
+
+    mentions = detect_mentions("Python developer without Docker experience.")
+    assert [(m.skill.name, m.negated) for m in mentions] == [("Python", False), ("Docker", True)]
+
+
+def test_negation_in_job_description():
+    skills = extract_skills(
+        "Requirements:\n- Python\n- No experience with Java needed.", detect_importance=True
+    )
+    assert "Python" in skills and "Java" not in skills
+
+
+def test_negated_mentions_removed_from_tfidf_text():
+    assert "skill_java" not in replace_skills_with_tokens("No experience with Java.")
+
+
+# ---------- performance ----------
+
+def test_find_mentions_on_long_text_is_fast():
+    import time
+
+    from app.services.skill_extractor import find_mentions
+
+    text = "Python, SQL and Docker. " * 4000
+    start = time.perf_counter()
+    mentions = find_mentions(text)
+    assert time.perf_counter() - start < 2.0
+    assert len(mentions) == 12000

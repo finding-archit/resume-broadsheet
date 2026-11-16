@@ -3,7 +3,8 @@
 Every recommendation is derived from computed data (missing skills, their
 importance in the job description, keyword overlap, scores). The engine never
 invents qualifications: suggestions to add a keyword are always conditional
-on the candidate genuinely having that experience.
+on the candidate genuinely having that experience. Sentences agree in number
+with the skills they list ("X was not found" / "X and Y were not found").
 """
 
 from app.services.skill_extractor import SkillMatch
@@ -16,6 +17,11 @@ def _join(names: list[str], limit: int = 6) -> str:
     if len(names) <= 1:
         return "".join(names)
     return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _verb(names: list[str], singular: str, plural: str) -> str:
+    """Pick the verb form that agrees with a list of names."""
+    return singular if len(names) == 1 else plural
 
 
 def _skill_priority(skill: SkillMatch) -> str:
@@ -52,6 +58,8 @@ def generate_recommendations(
     coverage_pct: float | None,
     overall: float,
     resume_word_count: int,
+    score_cap: dict | None = None,
+    copied_text_removed: dict | None = None,
 ) -> list[dict]:
     recs: list[dict] = []
 
@@ -66,6 +74,28 @@ def generate_recommendations(
             }
         )
 
+    if copied_text_removed and copied_text_removed.get("lines"):
+        lines = copied_text_removed["lines"]
+        add(
+            "high",
+            "Content",
+            "Copied job-description text was ignored",
+            f"{lines} line{'s' if lines != 1 else ''} of your resume "
+            f"{'was' if lines == 1 else 'were'} copied almost word for word from the job "
+            "description and excluded from the analysis. Describe your own experience in your "
+            "own words instead of pasting the posting.",
+        )
+    if score_cap and score_cap.get("applied"):
+        add(
+            "high",
+            "Content",
+            "Score capped: the resume reads as a keyword list",
+            f"Your resume has few sentences or bullets that describe actual work, so the score "
+            f"was capped at {score_cap['max_score']:.1f} (uncapped "
+            f"{score_cap['uncapped_score']:.1f}). Add project and experience bullets that explain "
+            "what you built, with which tools, and the outcome.",
+        )
+
     high = [m["name"] for m in missing if m["priority"] == "high"]
     medium = [m["name"] for m in missing if m["priority"] == "medium"]
     low = [m["name"] for m in missing if m["priority"] == "low"]
@@ -75,7 +105,8 @@ def generate_recommendations(
             "high",
             "Missing skills",
             f"Address {len(high)} high-priority skill gap{'s' if len(high) > 1 else ''}",
-            f"The job description emphasises {_join(high)}, which were not found in your resume. "
+            f"The job description emphasises {_join(high)}, which "
+            f"{_verb(high, 'was', 'were')} not found in your resume. "
             "If you have real experience with any of them, name the skill explicitly and show "
             "where you used it (a project, internship or course). If you do not, treat these as "
             "learning goals rather than adding them to your resume.",
@@ -86,8 +117,9 @@ def generate_recommendations(
             "medium",
             "Missing skills",
             "Consider other skills mentioned in the job description",
-            f"{_join(medium)} also appear in the job description. Mention them only where they "
-            "reflect work you have actually done.",
+            f"{_join(medium)} also {_verb(medium, 'appears', 'appear')} in the job description. "
+            f"Mention {_verb(medium, 'it', 'them')} only where "
+            f"{_verb(medium, 'it reflects', 'they reflect')} work you have actually done.",
             medium,
         )
     if low:
@@ -95,8 +127,9 @@ def generate_recommendations(
             "low",
             "Missing skills",
             "Optional / preferred skills",
-            f"{_join(low)} are listed as preferred or nice-to-have. They can strengthen an "
-            "application but are usually not deal-breakers.",
+            f"{_join(low)} {_verb(low, 'is', 'are')} listed as preferred or nice-to-have. "
+            f"{_verb(low, 'It', 'They')} can strengthen an application but "
+            f"{_verb(low, 'is', 'are')} usually not {_verb(low, 'a deal-breaker', 'deal-breakers')}.",
             low,
         )
 
@@ -106,10 +139,23 @@ def generate_recommendations(
             "medium",
             "Skill evidence",
             "Make inferred skills explicit",
-            f"{_join(implied)} were only inferred from related tools on your resume "
+            f"{_join(implied)} {_verb(implied, 'was', 'were')} only inferred from related tools "
+            "on your resume "
             "(for example, PostgreSQL implies SQL). Recruiters and keyword filters may not make "
             "that inference, so name these skills directly if they apply.",
             implied,
+        )
+
+    listed = [m["name"] for m in matched if m.get("evidence") == "listed"]
+    if listed:
+        add(
+            "medium",
+            "Skill evidence",
+            "Show where you used your listed skills",
+            f"{_join(listed)} {_verb(listed, 'appears', 'appear')} only in a skills list, not in "
+            "a sentence describing your work. Where it is true, add a project or experience "
+            f"bullet that shows how you used {_verb(listed, 'it', 'them')} and what the result was.",
+            listed,
         )
 
     missing_terms = [

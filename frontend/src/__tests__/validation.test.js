@@ -44,7 +44,9 @@ describe('text validation', () => {
   it('requires resume text of sufficient length', () => {
     expect(validateResumeText('')).toMatch(/upload a resume/)
     expect(validateResumeText('too short')).toMatch(/too short/)
-    expect(validateResumeText('x'.repeat(60))).toBeNull()
+    // Long enough in characters but only one word: the backend would reject it.
+    expect(validateResumeText('x'.repeat(60))).toMatch(/at least 10 words/)
+    expect(validateResumeText('word '.repeat(12))).toBeNull()
   })
 
   it('requires a job description with enough words', () => {
@@ -55,7 +57,7 @@ describe('text validation', () => {
 
   it('validates the whole form by mode', () => {
     expect(validateForm({ mode: 'file', file: null, jobDescription: longJd }).resume).toMatch(/choose a PDF/)
-    const ok = validateForm({ mode: 'text', resumeText: 'x'.repeat(80), jobDescription: longJd })
+    const ok = validateForm({ mode: 'text', resumeText: 'resume '.repeat(12), jobDescription: longJd })
     expect(ok).toEqual({ resume: null, job: null })
   })
 })

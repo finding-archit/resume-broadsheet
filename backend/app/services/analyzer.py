@@ -1,14 +1,17 @@
 """End-to-end analysis pipeline.
 
-raw text -> clean -> skill extraction -> TF-IDF similarity -> skill coverage
-         -> weighted score -> recommendations -> structured result
+raw text -> clean -> drop lines copied from the JD -> skill extraction (with
+negation) -> evidence (demonstrated / listed / inferred) -> TF-IDF similarity
+-> skill coverage -> weighted score -> keyword-list cap -> recommendations
+-> structured result (including highlight spans and a similarity breakdown)
 """
 
 from app.config import settings
 from app.services import matching_engine as me
 from app.services import text_preprocessor as tp
+from app.services.evidence import INFERRED, assess_evidence, remove_copied_lines
 from app.services.recommendation_engine import generate_recommendations, prioritize_missing
-from app.services.skill_extractor import extract_skills, satisfied_by_alternative
+from app.services.skill_extractor import detect_mentions, extract_skills, satisfied_by_alternative
 
 
 class InputValidationError(ValueError):
@@ -31,12 +34,26 @@ def _validate_text(text: str, label: str, min_chars: int, min_words: int) -> str
     return cleaned
 
 
-def _skill_row(match, resume_match=None) -> dict:
+def _skill_row(match, resume_match=None, evidence=None) -> dict:
     row = {"name": match.name, "category": match.category}
     if resume_match is not None:
         row["implied"] = resume_match.implied
         row["implied_by"] = list(resume_match.implied_by)
+        row["evidence"] = evidence.evidence_for(match.name, resume_match.implied)
     return row
+
+
+def _spans(mentions, status_for) -> list[dict]:
+    return [
+        {
+            "start": m.start,
+            "end": m.end,
+            "skill": m.skill.name,
+            "category": m.skill.category,
+            "status": "negated" if m.negated else status_for(m.skill.name),
+        }
+        for m in mentions
+    ]
 
 
 def scoring_method(coverage_available: bool) -> dict:
@@ -61,6 +78,15 @@ def scoring_method(coverage_available: bool) -> dict:
             "matching the listed skills, but depends on the skill taxonomy. The weights are "
             "configurable and are not scientifically validated hiring weights."
         ),
+        "adjustments": (
+            f"Keyword-list cap: if the resume has fewer than {settings.min_descriptive_segments} "
+            "descriptive segments (sentences or bullets of 6+ words that are not mostly skill "
+            "names and not a 'Label: a, b, c' list), the overall score is capped at "
+            f"{settings.keyword_list_cap} (below 'Good match'). Resume lines copied almost "
+            "verbatim from the job description are removed before analysis, and negated skill "
+            "mentions ('no experience with Java') are not counted."
+        ),
+        "bands": me.bands(),
         "tfidf_settings": me.TFIDF_SETTINGS,
         "semantic_embeddings": "Not used. Matching is lexical (keywords and TF-IDF) only.",
         "disclaimer": (
@@ -73,7 +99,7 @@ def scoring_method(coverage_available: bool) -> dict:
 
 def analyze(resume_text: str, job_description: str, source: dict | None = None) -> dict:
     resume_clean = _validate_text(
-        resume_text, "resume", settings.min_resume_chars, min_words=10
+        resume_text, "resume", settings.min_resume_chars, settings.min_resume_words
     )
     job_clean = _validate_text(
         job_description,
@@ -82,8 +108,17 @@ def analyze(resume_text: str, job_description: str, source: dict | None = None) 
         settings.min_job_description_words,
     )
 
-    job_skills = extract_skills(job_clean, detect_importance=True, include_implied=False)
-    resume_skills = extract_skills(resume_clean)
+    # Lines pasted from the job description are not evidence of anything. If
+    # nothing usable remains, the analysis still runs (and scores ~0).
+    resume_used, copied = remove_copied_lines(resume_clean, job_clean)
+
+    job_mentions = detect_mentions(job_clean)
+    resume_mentions = detect_mentions(resume_used)
+    job_skills = extract_skills(
+        job_clean, detect_importance=True, include_implied=False, mentions=job_mentions
+    )
+    resume_skills = extract_skills(resume_used, mentions=resume_mentions)
+    evidence = assess_evidence(resume_used, resume_mentions)
 
     resume_names = set(resume_skills)
     # "FastAPI or Django": a JD skill offered as an alternative is not counted
@@ -99,32 +134,65 @@ def analyze(resume_text: str, job_description: str, source: dict | None = None) 
     if coverage is not None:
         coverage = round(coverage, 1)
 
-    tfidf = me.compute_tfidf(resume_clean, job_clean)
+    tfidf = me.compute_tfidf(
+        resume_used, job_clean, resume_mentions=resume_mentions, job_mentions=job_mentions
+    )
     tfidf_pct = round(tfidf.similarity * 100, 1)
     # Use the same rounded components that are displayed and exported, so a
     # reader can reproduce the overall score from the numbers on screen.
     overall = me.overall_score(tfidf_pct, coverage)
+
+    score_cap = None
+    if (
+        evidence.descriptive_segments < settings.min_descriptive_segments
+        and overall > settings.keyword_list_cap
+    ):
+        score_cap = {
+            "applied": True,
+            "max_score": settings.keyword_list_cap,
+            "uncapped_score": overall,
+            "reason": (
+                f"The resume has {evidence.descriptive_segments} descriptive segment"
+                f"{'' if evidence.descriptive_segments == 1 else 's'} (sentences or bullets "
+                "describing work); at least "
+                f"{settings.min_descriptive_segments} are needed for a score above "
+                f"{settings.keyword_list_cap}. Keyword lists alone are capped."
+            ),
+        }
+        overall = settings.keyword_list_cap
 
     def sort_key(row):
         return (row["category"], row["name"].lower())
 
     matched = sorted(
         (
-            {**_skill_row(job_skills[n], resume_skills[n]), "importance": job_skills[n].importance}
+            {
+                **_skill_row(job_skills[n], resume_skills[n], evidence),
+                "importance": job_skills[n].importance,
+            }
             for n in matched_names
         ),
         key=sort_key,
     )
     missing = prioritize_missing([job_skills[n] for n in job_names - resume_names])
     # Implied-only skills are not listed as "additional": they are inferences, not claims.
+    additional_names = {
+        n for n in resume_names - set(job_skills) if not resume_skills[n].implied
+    }
     additional = sorted(
         (
-            _skill_row(resume_skills[n])
-            for n in resume_names - set(job_skills)
-            if not resume_skills[n].implied
+            {**_skill_row(resume_skills[n]), "evidence": evidence.evidence_for(n)}
+            for n in additional_names
         ),
         key=sort_key,
     )
+
+    evidence_summary = {
+        "descriptive_segments": evidence.descriptive_segments,
+        "demonstrated": sum(1 for m in matched if m["evidence"] == "demonstrated"),
+        "listed": sum(1 for m in matched if m["evidence"] == "listed"),
+        "inferred": sum(1 for m in matched if m["evidence"] == INFERRED),
+    }
 
     categories = {}
     for name in job_names:
@@ -144,6 +212,16 @@ def analyze(resume_text: str, job_description: str, source: dict | None = None) 
         )
     if coverage is None:
         warnings.append("No known skills were detected in the job description.")
+    if copied["lines"]:
+        warnings.append(
+            f"{copied['lines']} resume line{'s were' if copied['lines'] != 1 else ' was'} copied "
+            "from the job description and excluded from the analysis."
+        )
+    if score_cap:
+        warnings.append(
+            f"The score was capped at {settings.keyword_list_cap} because the resume reads as a "
+            "keyword list with little descriptive content."
+        )
 
     recommendations = generate_recommendations(
         missing=missing,
@@ -154,7 +232,17 @@ def analyze(resume_text: str, job_description: str, source: dict | None = None) 
         coverage_pct=coverage,
         overall=overall,
         resume_word_count=resume_words,
+        score_cap=score_cap,
+        copied_text_removed=copied,
     )
+
+    def resume_status(name):
+        return "matched" if name in matched_names else "additional"
+
+    def job_status(name):
+        if name in alternatives:
+            return "alternative"
+        return "matched" if name in matched_names else "missing"
 
     return {
         "overall_match_score": overall,
@@ -178,6 +266,14 @@ def analyze(resume_text: str, job_description: str, source: dict | None = None) 
         "resume_word_count": resume_words,
         "job_description_word_count": tp.word_count(job_clean),
         "job_description_keywords": tfidf.keywords,
+        "similarity_terms": me.similarity_terms(tfidf),
+        "evidence_summary": evidence_summary,
+        "copied_text_removed": copied,
+        "score_cap": score_cap,
+        "documents": {
+            "resume": {"text": resume_used, "spans": _spans(resume_mentions, resume_status)},
+            "job": {"text": job_clean, "spans": _spans(job_mentions, job_status)},
+        },
         "recommendations": recommendations,
         "scoring_method": scoring_method(coverage is not None),
         "warnings": warnings,

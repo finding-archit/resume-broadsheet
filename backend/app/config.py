@@ -38,9 +38,18 @@ class Settings:
         default_factory=lambda: _env_int("MAX_FILE_SIZE_MB", 5) * 1024 * 1024
     )
     min_resume_chars: int = 50
+    min_resume_words: int = 10
     min_job_description_chars: int = 50
     min_job_description_words: int = 10
     max_text_chars: int = 100_000
+    # Multipart overhead allowed on top of the file limit before /api/analyze
+    # rejects a request body outright (413).
+    request_overhead_bytes: int = 1024 * 1024
+
+    # Anti-gaming: a resume with fewer descriptive segments (sentences/bullets
+    # that describe work, not bare skill lists) is capped below "Good match".
+    keyword_list_cap: float = 39.9
+    min_descriptive_segments: int = 2
 
     allowed_extensions: tuple = (".pdf", ".docx")
 

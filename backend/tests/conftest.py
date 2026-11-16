@@ -7,6 +7,11 @@ from pathlib import Path
 
 import pytest
 
+try:
+    import pymupdf
+except ImportError:  # PyMuPDF releases before 1.24.3 only provide "fitz"
+    import fitz as pymupdf
+
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 SAMPLE_DIR = BACKEND_DIR.parent / "sample_data"
@@ -17,11 +22,9 @@ def read_sample(rel: str) -> str:
 
 
 def make_pdf_bytes(text: str) -> bytes:
-    import fitz
-
-    doc = fitz.open()
+    doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_textbox(fitz.Rect(50, 50, 550, 800), text, fontsize=10)
+    page.insert_textbox(pymupdf.Rect(50, 50, 550, 800), text, fontsize=10)
     data = doc.tobytes()
     doc.close()
     return data
@@ -29,11 +32,9 @@ def make_pdf_bytes(text: str) -> bytes:
 
 def make_blank_pdf_bytes() -> bytes:
     """A valid PDF with a page but no text - behaves like a scanned resume."""
-    import fitz
-
-    doc = fitz.open()
+    doc = pymupdf.open()
     page = doc.new_page()
-    page.draw_rect(fitz.Rect(100, 100, 300, 300), color=(0, 0, 0), fill=(0.5, 0.5, 0.5))
+    page.draw_rect(pymupdf.Rect(100, 100, 300, 300), color=(0, 0, 0), fill=(0.5, 0.5, 0.5))
     data = doc.tobytes()
     doc.close()
     return data

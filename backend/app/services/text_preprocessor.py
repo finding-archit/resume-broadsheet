@@ -12,14 +12,21 @@ into fragments. We avoid that by:
 3. (In the matching engine) replacing detected skill mentions with canonical
    single tokens so aliases such as "JS" and "JavaScript" are treated as the
    same term by TF-IDF.
+4. Stemming plain words with the English Snowball stemmer (pure Python, no
+   data download) so "cleaning" / "clean" and "datasets" / "dataset" match.
+   Stop words are checked on the surface form first, and skill tokens or
+   tokens containing digits or . + # / are never stemmed.
 
 Stop words come from scikit-learn's built-in English list, so no corpus
 download (e.g. NLTK data) is needed and everything works offline.
 """
 
 import re
+import threading
 import unicodedata
+from functools import lru_cache
 
+import snowballstemmer
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # Words that are frequent in every resume / job post but carry no matching signal.
@@ -55,10 +62,21 @@ _BULLET_RE = re.compile(f"[{re.escape(_BULLETS)}]")
 _HYPHEN_LINEBREAK_RE = re.compile(r"(\w)-\n(\w)")
 _URL_RE = re.compile(r"https?://\S+|www\.\S+")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-_PHONE_RE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+# Phone candidates stay on one line; _strip_phone keeps year ranges such as
+# "2021 - 2025" (8 digits) and only removes runs with at least 10 digits.
+_PHONE_RE = re.compile(r"(?<![\w+])\+?\d[\d \t().-]{8,}\d(?!\w)")
+_YEAR_RANGE_RE = re.compile(r"^[\s(]*(?:(?:19|20)\d{2}[\s()]*-[\s()]*)+(?:19|20)\d{2}[\s)]*$")
+_MIN_PHONE_DIGITS = 10
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SPACES_RE = re.compile(r"[ \t ]+")
 _MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
+
+
+def _strip_phone(match: re.Match) -> str:
+    value = match.group(0)
+    if sum(ch.isdigit() for ch in value) < _MIN_PHONE_DIGITS or _YEAR_RANGE_RE.match(value):
+        return value
+    return " "
 
 
 def clean_text(text: str) -> str:
@@ -78,7 +96,7 @@ def clean_text(text: str) -> str:
     # Contact details are personal data and add no matching signal.
     text = _URL_RE.sub(" ", text)
     text = _EMAIL_RE.sub(" ", text)
-    text = _PHONE_RE.sub(" ", text)
+    text = _PHONE_RE.sub(_strip_phone, text)
     text = _BULLET_RE.sub(" ", text)
     text = _SPACES_RE.sub(" ", text)
     text = "\n".join(line.strip() for line in text.split("\n"))
@@ -104,9 +122,33 @@ def remove_stop_words(tokens: list[str]) -> list[str]:
     return [t for t in tokens if t not in STOP_WORDS and not t.isdigit()]
 
 
+# Snowball stemmers keep internal state while stemming, so each thread gets its own.
+_stemmers = threading.local()
+
+
+@lru_cache(maxsize=65536)
+def stem(token: str) -> str:
+    """Stem a plain alphabetic token; leave skill tokens and technical terms intact.
+
+    Skill tokens contain "_" and terms such as "c++", "node.js", "ci/cd" or
+    "python3" contain non-letters, so ``isalpha`` excludes all of them.
+    """
+    if not token.isalpha():
+        return token
+    stemmer = getattr(_stemmers, "english", None)
+    if stemmer is None:
+        stemmer = _stemmers.english = snowballstemmer.stemmer("english")
+    return stemmer.stemWord(token)
+
+
+def analyze_terms(text: str) -> list[tuple[str, str]]:
+    """(stemmed term, surface token) pairs after stop-word removal."""
+    return [(stem(t), t) for t in remove_stop_words(tokenize(text))]
+
+
 def analyzer(text: str) -> list[str]:
-    """Analyzer used by the TF-IDF vectorizer: tokenize then drop stop words."""
-    return remove_stop_words(tokenize(text))
+    """Analyzer used by the TF-IDF vectorizer: tokenize, drop stop words, stem."""
+    return [stem(t) for t in remove_stop_words(tokenize(text))]
 
 
 def word_count(text: str) -> int:

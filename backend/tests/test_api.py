@@ -153,3 +153,86 @@ def test_resume_text_is_not_logged(client, caplog, backend_resume_text, backend_
     )
     logged = " ".join(r.getMessage() for r in caplog.records)
     assert "PRIYA" not in logged and "FastAPI and PostgreSQL" not in logged
+
+
+
+NEW_KEYS = {
+    "similarity_terms",
+    "evidence_summary",
+    "copied_text_removed",
+    "score_cap",
+    "documents",
+}
+
+
+def test_analyze_response_has_new_fields(client, backend_resume_text, backend_jd):
+    body = client.post(
+        "/api/analyze", data={"resume_text": backend_resume_text, "job_description": backend_jd}
+    ).json()
+    assert NEW_KEYS <= body.keys()
+    assert body["score_cap"] is None
+    assert body["documents"]["resume"]["spans"] and body["documents"]["job"]["spans"]
+    assert {"evidence"} <= body["matched_skills"][0].keys()
+
+
+def test_config_endpoint(client):
+    res = client.get("/api/config")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["weights"] == {"tfidf": 0.6, "skill_coverage": 0.4}
+    assert body["bands"] == [
+        {"min": 60, "label": "Strong match"},
+        {"min": 40, "label": "Good match"},
+        {"min": 20, "label": "Partial match"},
+        {"min": 0, "label": "Low match"},
+    ]
+    assert body["max_file_size_mb"] == 5
+    assert body["min_resume_words"] == 10 and body["min_job_description_words"] == 10
+    assert body["skills_in_taxonomy"] == 118
+    assert sum(c["count"] for c in body["categories"]) == 118
+    assert body["keyword_list_cap"] == 39.9
+    assert "/api/config" in client.get("/openapi.json").json()["paths"]
+
+
+def _request_limit():
+    return rp.settings.max_file_size_bytes + rp.settings.request_overhead_bytes
+
+
+def test_oversized_request_body_returns_413(client, backend_jd):
+    big = b"%PDF-" + b"0" * (_request_limit() + 10)
+    res = client.post(
+        "/api/analyze",
+        data={"job_description": backend_jd},
+        files={"resume_file": ("big.pdf", big, "application/pdf")},
+    )
+    assert res.status_code == 413
+    assert "too large" in res.json()["detail"]
+
+
+def test_streamed_body_without_content_length_is_limited(client):
+    chunk = b"0" * (256 * 1024)
+    chunks = _request_limit() // len(chunk) + 2
+
+    def body():
+        yield (
+            b'--xyz\r\nContent-Disposition: form-data; name="resume_file"; filename="r.pdf"\r\n'
+            b"Content-Type: application/pdf\r\n\r\n%PDF-"
+        )
+        for _ in range(chunks):
+            yield chunk
+
+    res = client.post(
+        "/api/analyze",
+        content=body(),
+        headers={"content-type": "multipart/form-data; boundary=xyz"},
+    )
+    assert res.status_code == 413
+    assert "too large" in res.json()["detail"]
+
+
+def test_uploads_are_spooled_in_memory_up_to_the_limit():
+    from starlette.formparsers import MultiPartParser
+
+    import app.main  # noqa: F401  (applies the setting)
+
+    assert MultiPartParser.spool_max_size == rp.settings.max_file_size_bytes

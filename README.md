@@ -46,18 +46,19 @@ Job seekers often send the same resume to many roles without knowing how well it
 
 | Area | What is implemented |
 |---|---|
-| Resume input | PDF / DOCX upload (drag-and-drop, replace, remove), or pasted text; client- and server-side validation (type, 5 MB size, file signature) |
+| Resume input | PDF / DOCX upload (drag-and-drop, replace, remove), or pasted text; 3 fictional sample résumés; client- and server-side validation (type, 5 MB size, file signature, minimum words) |
 | Job description | Large text area with word counter and minimum-length validation; 4 clearly labelled **sample** job descriptions |
 | Text extraction | PyMuPDF for PDF, python-docx for DOCX (paragraphs and tables); clear errors for corrupted, password-protected, empty or scanned PDFs |
-| Preprocessing | Unicode NFKC, hyphenation repair, removal of bullets/URLs/emails/phone numbers, technical-term-preserving tokenizer, stop-word removal |
-| Skill extraction | 117 skills in 8 categories, alias normalization, case-sensitive handling of ambiguous names (C, R, Go), longest-match overlap resolution, inferred skills (PostgreSQL → SQL), "X or Y" alternatives |
+| Preprocessing | Unicode NFKC, hyphenation repair, removal of bullets/URLs/emails/phone numbers (date ranges kept), technical-term-preserving tokenizer, stop-word removal, Snowball stemming for ordinary words |
+| Skill extraction | 118 skills in 8 categories, alias normalization, case-sensitive handling of short names (C, R, Go), context checks for ambiguous words (Swift, Express, Spark, Excel), name-initial guard ("R. Sharma"), negation ("no experience with Java"), longest-match overlap resolution, inferred skills (PostgreSQL → SQL), "X or Y" alternatives |
 | Importance detection | JD skills labelled *required / mentioned / preferred* from section headers and wording |
-| Matching | TF-IDF + cosine similarity, skill coverage, weighted overall score, match level |
-| Results dashboard | Score ring, component cards, the score calculation written out, skill chips, category chart, TF-IDF keyword table, prioritized recommendations, scoring method explanation |
-| Export | CSV and PDF reports built from the same data the dashboard displays |
-| Reset | "New analysis" clears all inputs and results |
-| API | `POST /api/analyze`, `GET /api/health`, Swagger UI at `/docs` |
-| Tests | 110 backend tests (pytest) + 13 frontend tests (Vitest) |
+| Evidence & anti-gaming | Each résumé skill is *shown in use* (in a descriptive sentence), *listed only* or *inferred*; lines copied verbatim from the JD are ignored; a bare keyword list is capped at 39.9 |
+| Matching | TF-IDF + cosine similarity, skill coverage, weighted overall score, match level, per-term breakdown of the similarity |
+| Report | Editorial "broadsheet" design (light/dark editions): animated score gauge and stamp, score-anatomy donut, skill constellation (d3-force network), résumé/job Venn diagram, triage board, keyword word-wall, similarity breakdown, category radar, annotated side-by-side manuscript, what-if simulator, multi-job comparison heatmap, edit-and-re-run with revision history |
+| Export | CSV and PDF reports built from the same data the report displays |
+| Reset | "New analysis" clears all inputs, results and revisions |
+| API | `POST /api/analyze`, `GET /api/config`, `GET /api/health`, Swagger UI at `/docs`; request-size limit (413) |
+| Tests | 189 backend tests (pytest) + 20 frontend tests (Vitest) |
 
 ## System architecture
 
@@ -88,9 +89,9 @@ Responsibilities are separated: the UI only collects input and renders results; 
 ## NLP methodology and formulas
 
 1. **Text extraction:** PyMuPDF reads each PDF page's text layer; python-docx reads paragraphs and table cells. Scanned PDFs have no text layer and are rejected with an explanation (OCR is not implemented).
-2. **Preprocessing:** NFKC normalization, re-joining `develop-\nment`, removing bullets, URLs, e-mails and phone numbers, collapsing whitespace. Case is kept for skill detection (to tell *Go* the language from *go* the verb) and lowercased for TF-IDF.
-3. **Tokenization:** custom regex `(?:(?<![\w])\.)?[a-z0-9][a-z0-9_]*(?:[./][a-z0-9_]+)*[+#]*` keeps `c++`, `c#`, `.net`, `node.js`, `ci/cd` as single tokens. Stop words are scikit-learn's English list plus a small list of generic job-post words ("experience", "responsibilities", "develop"...).
-4. **Skill extraction:** each alias becomes a regex with *technical-term boundaries* (no letter, digit, `+`, `#` or `.` on either side), so `Java` ≠ `JavaScript`, `C` ≠ `C++`, and `JS` inside `Node.js` is not JavaScript. Overlaps are resolved longest-first.
+2. **Preprocessing:** NFKC normalization, re-joining `develop-\nment`, removing bullets, URLs, e-mails and phone numbers (year ranges such as "2021 - 2025" are kept), collapsing whitespace. Case is kept for skill detection (to tell *Go* the language from *go* the verb) and lowercased for TF-IDF.
+3. **Tokenization:** custom regex `(?:(?<![\w])\.)?[a-z0-9][a-z0-9_]*(?:[./][a-z0-9_]+)*[+#]*` keeps `c++`, `c#`, `.net`, `node.js`, `ci/cd` as single tokens. Stop words are scikit-learn's English list plus a small list of generic job-post words ("experience", "responsibilities", "develop"...). Ordinary words are then reduced with the Snowball stemmer, so "cleaning" and "clean" match; skill tokens and technical terms are never stemmed.
+4. **Skill extraction:** each alias becomes a regex with *technical-term boundaries* (no letter, digit, `+`, `#` or `.` on either side), so `Java` ≠ `JavaScript`, `C` ≠ `C++`, and `JS` inside `Node.js` is not JavaScript. Overlaps are resolved longest-first. Ambiguous words (Swift, Express, Go, Spark, Excel) count only in a technical context, name initials ("Priya R. Sharma") are ignored, and negated mentions ("no experience with Kubernetes") do not count.
 5. **Skill canonicalization for TF-IDF:** every skill mention is replaced by one token (`JS`, `JavaScript` → `skill_javascript`; `machine learning` → `skill_machine_learning`), so aliases and multi-word skills count as the same term.
 6. **TF-IDF + cosine similarity:** `TfidfVectorizer(analyzer=custom, sublinear_tf=True, smooth_idf=True, norm="l2")` fitted on the two documents together.
 7. **Scoring and recommendations:** described below.
@@ -110,23 +111,25 @@ Overall Match Score   = 0.60 × TF-IDF Similarity + 0.40 × Skill Coverage
 - **Alternatives:** in "FastAPI, Django or Flask", the unused options are not counted as required when the resume has one of them (they appear under `alternative_skills`). A skill that is also demanded on its own elsewhere stays required.
 - **Weights rationale:** TF-IDF uses the whole document (responsibilities, domain vocabulary), so it gets the larger share. Skill coverage rewards explicit requirements but only sees taxonomy skills. The weights are heuristic and configurable (`TFIDF_WEIGHT`, `SKILL_WEIGHT` environment variables); they are not validated hiring weights.
 - **Match levels:** Strong ≥ 60, Good ≥ 40, Partial ≥ 20, Low < 20. These are calibrated to the observed range of TF-IDF cosine values (related real documents typically score 20–45 %), not to hiring outcomes.
+- **Anti-gaming:** résumé lines copied almost verbatim from the JD are removed before analysis (reported in `copied_text_removed`). A résumé with fewer than 2 descriptive segments (a bare keyword list) has its overall score capped at 39.9, reported in `score_cap` with the uncapped value. Example: a comma-separated list of the backend JD's skills scores 39.9 (uncapped 75.3); pasting the JD itself as the résumé scores 5.2.
+- **Similarity explained:** because the vectors are L2-normalised, cosine = Σ rᵢ·jᵢ; `similarity_terms` reports each shared term's share of that sum.
 - **Semantic embeddings:** not used. Keeping matching lexical makes it deterministic, explainable and offline.
 
 **Results on the bundled fictional samples** (generated by the actual code):
 
 | Resume ↓ / Job → | Python Backend | Data Analyst | ML Engineer | Frontend |
 |---|---|---|---|---|
-| Python developer | **43.0 Good** | 6.6 Low | 15.3 Low | 19.1 Low |
-| Data analyst | 8.5 Low | **46.1 Good** | 11.1 Low | 0.0 Low |
-| Chef (unrelated) | 0.0 Low | 0.5 Low | 0.0 Low | 0.0 Low |
+| Python developer | **46.3 Good** | 6.9 Low | 17.3 Low | 20.1 Partial |
+| Data analyst | 8.9 Low | **48.1 Good** | 11.1 Low | 0.4 Low |
+| Chef (unrelated) | 1.7 Low | 1.0 Low | 1.1 Low | 2.0 Low |
 
 ## Technology stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18 (JavaScript/JSX), Vite 5, Tailwind CSS 3, React Router 6, Lucide React, Recharts, jsPDF + jspdf-autotable |
-| Backend | Python 3.12 (3.11+ works), FastAPI, Uvicorn, Pydantic 2, python-multipart |
-| NLP / ML | scikit-learn (TF-IDF, cosine similarity, stop words), NumPy, regular expressions |
+| Frontend | React 18 (JavaScript/JSX), Vite 8, Tailwind CSS 3, React Router 7, Lucide React, Recharts, d3-force, jsPDF 4 + jspdf-autotable 5; Fraunces, Instrument Sans and JetBrains Mono bundled via Fontsource |
+| Backend | Python 3.11+ (tested on 3.14), FastAPI, Uvicorn, Pydantic 2, python-multipart |
+| NLP / ML | scikit-learn (TF-IDF, cosine similarity, stop words), NumPy, Snowball stemmer (`snowballstemmer`), regular expressions |
 | Documents | PyMuPDF (PDF), python-docx (DOCX) |
 | Testing | pytest, FastAPI TestClient (HTTPX), Vitest |
 
@@ -138,28 +141,32 @@ NLTK and spaCy were deliberately not used: their stop-word and model data need s
 AI-Resume-Matcher/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app, CORS
+│   │   ├── main.py                  # FastAPI app, CORS, request-size middleware
+│   │   ├── middleware.py            # 413 for oversized /api/analyze bodies
 │   │   ├── config.py                # weights, limits (env-overridable)
-│   │   ├── api/routes.py            # /api/health, /api/analyze
+│   │   ├── api/routes.py            # /api/health, /api/config, /api/analyze
 │   │   ├── schemas/analysis.py      # Pydantic response models
-│   │   ├── data/skills.json         # skill taxonomy (117 skills, 8 categories)
+│   │   ├── data/skills.json         # skill taxonomy (118 skills, 8 categories)
 │   │   └── services/
 │   │       ├── resume_parser.py         # validation + PDF/DOCX extraction
-│   │       ├── text_preprocessor.py     # cleaning, tokenizer, stop words
-│   │       ├── skill_extractor.py       # alias matching, importance, alternatives
-│   │       ├── matching_engine.py       # TF-IDF, cosine, coverage, score
+│   │       ├── text_preprocessor.py     # cleaning, tokenizer, stop words, stemming
+│   │       ├── skill_extractor.py       # alias matching, context, negation, importance, alternatives
+│   │       ├── evidence.py              # descriptive segments, copy filter, keyword-list cap
+│   │       ├── matching_engine.py       # TF-IDF, cosine, term contributions, coverage, score
 │   │       ├── recommendation_engine.py # rule-based suggestions
 │   │       └── analyzer.py              # pipeline orchestration
 │   ├── scripts/generate_sample_documents.py
-│   ├── tests/                       # 110 pytest tests
+│   ├── tests/                       # 189 pytest tests
+│   ├── .env.example
 │   ├── pytest.ini
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── components/   # Layout, FileDropzone, Feedback, ResultWidgets
-│   │   ├── pages/        # Home, Analyze, Results, Methodology
-│   │   ├── services/api.js
-│   │   ├── utils/        # validation, export (CSV/PDF), formatting
+│   │   ├── components/   # Layout (masthead, nav), FileDropzone, Feedback
+│   │   │   └── report/   # gauge, anatomy donut, constellation, charts, manuscript, what-if, compare, revisions
+│   │   ├── pages/        # Home, Analyze, Results, Methodology, NotFound
+│   │   ├── services/     # api.js, config.jsx (live /api/config + health)
+│   │   ├── utils/        # validation, report maths, export (CSV/PDF), formatting, theme
 │   │   ├── data/sampleJobs.js
 │   │   ├── __tests__/    # Vitest tests
 │   │   ├── App.jsx
@@ -172,18 +179,19 @@ AI-Resume-Matcher/
 ├── docs/
 │   ├── methodology.md
 │   └── screenshots/
-├── start.sh
+├── start.sh               # macOS / Linux
+├── start.ps1              # Windows
 └── README.md
 ```
 
 ## Installation
 
-Prerequisites: **Python 3.11+** and **Node.js 18+**.
+Prerequisites: **Python 3.11+** (tested up to 3.14) and **Node.js 18+**.
 
 ```bash
 # Backend
 cd backend
-python3.12 -m venv .venv            # or python3.11
+python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
@@ -199,8 +207,13 @@ Optionally, regenerate the sample PDF/DOCX resumes with `cd backend && python sc
 **Option A, both at once:**
 
 ```bash
-./start.sh                       # backend :8000, frontend :5173
+./start.sh                       # macOS / Linux: backend :8000, frontend :5173
 BACKEND_PORT=8010 ./start.sh     # if port 8000 is already used
+```
+
+```powershell
+.\start.ps1                      # Windows PowerShell
+.\start.ps1 -BackendPort 8010
 ```
 
 **Option B, two terminals:**
@@ -238,14 +251,14 @@ The Vite dev server proxies `/api` to the backend, so no CORS or URL configurati
 | Service | Default | Notes |
 |---|---|---|
 | Frontend (Vite) | `5173` | Proxies `/api` to `BACKEND_URL` |
-| Backend (FastAPI) | `8000` | Any free port works, e.g. `8010` when 8000 is taken by another app: run `BACKEND_PORT=8010 ./start.sh`, or start uvicorn with `--port 8010` and the frontend with `BACKEND_URL=http://127.0.0.1:8010 npm run dev` |
+| Backend (FastAPI) | `8000` | Any free port works, e.g. `8010` when 8000 is taken by another app: run `BACKEND_PORT=8010 ./start.sh` (or `.\start.ps1 -BackendPort 8010`), or start uvicorn with `--port 8010` and the frontend with `BACKEND_URL=http://127.0.0.1:8010 npm run dev` |
 
 ### Using the sample data
 
 Everything in `sample_data/` is fictional and safe to share:
 
-- **Job descriptions:** `sample_data/job_descriptions/` holds 4 JDs (Python Backend, Data Analyst, ML Engineer, Frontend). They appear in the Analyze page's "Try a sample job description" menu, labelled `SAMPLE:`.
-- **Resumes:** `sample_data/resumes/` holds 3 resumes (Python developer, data analyst, and an unrelated chef as a negative control), each as `.txt`, `.pdf` and `.docx`. Upload the PDF/DOCX to test file parsing, or use "Load sample resume" in the *Paste text* tab.
+- **Job descriptions:** `sample_data/job_descriptions/` holds 4 JDs (Python Backend, Data Analyst, ML Engineer, Frontend). They appear on the Analyze page as "Classifieds" cards.
+- **Resumes:** `sample_data/resumes/` holds 3 resumes (Python developer, data analyst, and an unrelated chef as a negative control), each as `.txt`, `.pdf` and `.docx`. Upload the PDF/DOCX to test file parsing, or pick one of the "Sample manuscripts" in the *Paste the text* tab.
 - **Regenerating:** the PDF/DOCX files are generated from the `.txt` files with `python backend/scripts/generate_sample_documents.py`.
 
 ## API usage
@@ -254,8 +267,12 @@ Everything in `sample_data/` is fictional and safe to share:
 
 ```bash
 curl http://127.0.0.1:8000/api/health
-# {"status":"ok","version":"1.0.0","skills_in_taxonomy":117}
+# {"status":"ok","version":"1.0.0","skills_in_taxonomy":118}
 ```
+
+### `GET /api/config`
+
+Weights, score bands, input limits, taxonomy size and categories, and the keyword-list cap. The frontend reads these so the numbers it displays always match the server.
 
 ### `POST /api/analyze` (multipart/form-data)
 
@@ -263,7 +280,7 @@ curl http://127.0.0.1:8000/api/health
 |---|---|---|
 | `job_description` | yes | Job description text (≥ 10 words / 50 chars) |
 | `resume_file` | one of | PDF or DOCX, ≤ 5 MB |
-| `resume_text` | one of | Pasted resume text (≥ 50 chars) |
+| `resume_text` | one of | Pasted resume text (≥ 10 words / 50 chars) |
 
 ```bash
 # File upload
@@ -277,31 +294,39 @@ curl -X POST http://127.0.0.1:8000/api/analyze \
   -F "job_description=<sample_data/job_descriptions/data_analyst.txt"
 ```
 
-**Status codes:** `200` success · `400` no resume, or both file and text · `413` file too large · `415` unsupported file type · `422` corrupted / password-protected / scanned / empty document, or text too short.
+**Status codes:** `200` success · `400` no resume, or both file and text · `413` file or request too large · `415` unsupported file type · `422` corrupted / password-protected / scanned / empty document, or text too short.
 
-**Sample output** (abridged real response for the sample Python resume vs. the Python Backend JD):
+**Sample output** (abridged real response for the sample Python resume PDF vs. the Python Backend JD):
 
 ```json
 {
-  "overall_match_score": 43.0,
+  "overall_match_score": 46.3,
   "match_level": "Good match",
-  "tfidf_similarity": 29.5,
+  "tfidf_similarity": 35.1,
   "skill_coverage": 63.2,
   "matched_skills": [
-    { "name": "PostgreSQL", "category": "Databases", "implied": false, "implied_by": [], "importance": "required" }
+    { "name": "PostgreSQL", "category": "Databases", "implied": false, "implied_by": [], "importance": "required", "evidence": "demonstrated" }
   ],
   "missing_skills": [
     { "name": "Communication", "category": "Soft Skills", "importance": "required", "job_mentions": 1, "priority": "high" }
   ],
-  "additional_skills": [{ "name": "Linux", "category": "Cloud & DevOps" }],
+  "additional_skills": [{ "name": "Linux", "category": "Cloud & DevOps", "evidence": "listed" }],
   "alternative_skills": [{ "name": "Django", "category": "Web Development", "satisfied_by": ["FastAPI", "Flask"] }],
   "job_skill_count": 19,
   "resume_skill_count": 25,
   "category_breakdown": [{ "category": "Cloud & DevOps", "required": 5, "matched": 1 }],
-  "extracted_resume_text_length": 1271,
-  "resume_word_count": 169,
+  "extracted_resume_text_length": 1281,
+  "resume_word_count": 171,
   "job_description_word_count": 134,
-  "job_description_keywords": [{ "term": "Python", "weight": 0.2523, "in_resume": true, "is_skill": true }],
+  "job_description_keywords": [{ "term": "Python", "weight": 0.2558, "in_resume": true, "is_skill": true }],
+  "similarity_terms": [{ "term": "Python", "contribution": 0.1206, "resume_weight": 0.1655, "job_weight": 0.2558, "is_skill": true }],
+  "evidence_summary": { "descriptive_segments": 9, "demonstrated": 7, "listed": 5, "inferred": 0 },
+  "copied_text_removed": { "lines": 0, "characters": 0 },
+  "score_cap": null,
+  "documents": {
+    "resume": { "text": "...cleaned text, contact details removed...", "spans": [{ "start": 144, "end": 150, "skill": "Python", "category": "Programming Languages", "status": "matched" }] },
+    "job": { "text": "...", "spans": [{ "start": 25, "end": 31, "skill": "Python", "category": "Programming Languages", "status": "matched" }] }
+  },
   "recommendations": [
     { "id": 1, "priority": "high", "category": "Missing skills", "title": "Address 2 high-priority skill gaps", "detail": "...", "skills": ["Communication", "Problem Solving"] }
   ],
@@ -309,44 +334,46 @@ curl -X POST http://127.0.0.1:8000/api/analyze \
     "overall_formula": "Overall Match Score = 0.60 x TF-IDF Similarity + 0.40 x Skill Coverage",
     "tfidf_formula": "...", "skill_coverage_formula": "...",
     "weights": { "tfidf": 0.6, "skill_coverage": 0.4 },
+    "bands": [{ "min": 60, "label": "Strong match" }, "..."],
+    "adjustments": "Keyword-list cap: ... Resume lines copied almost verbatim from the job description are removed ...",
     "weights_rationale": "...", "tfidf_settings": { "...": "..." },
     "semantic_embeddings": "Not used. Matching is lexical (keywords and TF-IDF) only.",
     "disclaimer": "This score measures text and skill similarity ... It is not a probability of being shortlisted or hired ..."
   },
   "warnings": [],
-  "input_source": { "type": "file", "filename": "sample_resume_python_developer.pdf", "size_bytes": 5948 }
+  "input_source": { "type": "file", "filename": "sample_resume_python_developer.pdf", "size_bytes": 5939 }
 }
 ```
 
-Check: 0.60 × 29.5 + 0.40 × 63.2 = 17.70 + 25.28 = 42.98 → **43.0**.
+Check: 0.60 × 35.1 + 0.40 × 63.2 = 21.06 + 25.28 = 46.34 → **46.3**.
 
 ## Testing
 
 ```bash
-cd backend && source .venv/bin/activate && pytest -v     # 110 tests
-cd frontend && npm test                                   # 13 tests
+cd backend && source .venv/bin/activate && pytest -q     # 189 tests (Windows: .venv\Scripts\python -m pytest -q)
+cd frontend && npm test                                   # 20 tests
 ```
 
 All tests are deterministic and offline. PDF/DOCX fixtures are generated at test time. The suite covers:
 
 - **Parsing:** PDF and DOCX parsing, including tables; unsupported, empty, oversized, renamed, corrupted, truncated, legacy `.doc` and scanned documents.
 - **Text handling:** preprocessing and the tokenizer.
-- **Skills:** aliases, phrase matching, false-positive guards (C vs C++, Java vs JavaScript, *go*, *excel*, R&D), importance detection and alternatives.
-- **Scoring:** the skill coverage formula, including a zero denominator; TF-IDF/cosine edge cases (identical, disjoint, empty vocabulary); score bounds.
-- **Analysis quality:** relevant vs. unrelated resumes; internal consistency of the results; recommendations that never fabricate.
-- **API:** status codes and validation; PDF and pasted-text results agree; no resume text appears in logs.
+- **Skills:** aliases, phrase matching, false-positive guards (C vs C++, Java vs JavaScript, *go*, *excel*, R&D, name initials, sentence-start words such as "Swift delivery"), negation, importance detection and alternatives.
+- **Scoring:** the skill coverage formula, including a zero denominator; TF-IDF/cosine edge cases (identical, disjoint, empty vocabulary); stemming; similarity-term contributions summing to 1; score bounds.
+- **Analysis quality:** relevant vs. unrelated resumes; internal consistency of the results; evidence labels; the keyword-list cap and copied-text filter; highlight spans that point at real mentions; recommendations that never fabricate and agree in number.
+- **API:** status codes and validation; `/api/config`; request-size limit; PDF and pasted-text results agree; no resume text appears in logs; a 100k-character résumé is analysed in well under 5 s.
 - **Temp files:** cleanup after both success and failure.
-- **Frontend:** validation rules, CSV escaping, and export values matching the displayed values.
+- **Frontend:** validation rules, what-if projection, highlight segmentation, score anatomy, generated headlines, CSV escaping, and export values matching the displayed values.
 
 ## Limitations
 
-- **Lexical matching only.** Synonyms, paraphrases and skills outside the taxonomy can be missed ("built data pipelines" is understood, "wrangled datasets" is not). Context and negation are not understood: "no experience with Java" still counts as Java.
+- **Lexical matching only.** Synonyms, paraphrases and skills outside the taxonomy can be missed ("built data pipelines" is understood, "wrangled datasets" is not). Simple negation ("no experience with Java") is handled, but subtler context is not.
 - **TF-IDF similarity is not candidate quality or hiring probability.** It measures shared vocabulary only.
 - **Two-document IDF.** Fitting on just the resume and the JD gives a narrow IDF range, and terms in both documents are slightly down-weighted. Absolute similarity values are therefore modest (typically 20–45 % for good matches).
-- **Taxonomy-dependent coverage.** It is a hand-curated list of 117 skills; extend `backend/app/data/skills.json` for other domains.
-- **Importance heuristics.** Required/preferred labels come from keywords and headings and can be wrong for unusual layouts.
+- **Taxonomy-dependent coverage.** It is a hand-curated list of 118 skills; extend `backend/app/data/skills.json` for other domains.
+- **Importance and evidence heuristics.** Required/preferred labels and "shown in use / listed only" come from keywords, headings and line shapes, and can be wrong for unusual layouts.
 - **No OCR.** Scanned or image-only PDFs are rejected. Legacy `.doc` is not supported.
-- **Short ambiguous names.** C, R and Go are matched case-sensitively; "Go" at the start of an ordinary sentence could still be misread.
+- **Short ambiguous names.** C, R and Go are matched case-sensitively and ambiguous words need technical context, so an unusual phrasing can still be missed or misread.
 - **Layout.** Complex multi-column PDFs may extract in an unusual reading order (this affects TF-IDF very little, since word order is ignored).
 
 ## Privacy and ethical considerations
@@ -362,10 +389,10 @@ All tests are deterministic and offline. PDF/DOCX fixtures are generated at test
 
 - Optional semantic similarity with sentence embeddings (e.g. `all-MiniLM-L6-v2`), reported as a separate, documented component.
 - OCR for scanned PDFs (Tesseract).
-- Negation and context handling ("no experience with...") and section-aware parsing (Education, Experience).
-- Lemmatization and a larger, domain-specific taxonomy (healthcare, finance, mechanical).
+- Full section-aware parsing (Education, Experience) and richer context handling beyond simple negation.
+- A background corpus for IDF, so generic words are weighted against many job posts rather than two documents.
+- A larger, domain-specific taxonomy (healthcare, finance, mechanical).
 - Experience-level extraction (years of experience, degree requirements).
-- Comparing one resume with several job descriptions side by side.
 - Evaluating the weights against a labelled dataset of resume–job pairs.
 
 ## Screenshots

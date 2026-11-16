@@ -116,3 +116,8 @@ def test_no_temp_dirs_leak_across_many_parses():
     for _ in range(5):
         rp.extract_text_from_file("resume.docx", make_docx_bytes(["Python developer"]))
     assert _leftover_dirs() == before
+
+
+
+def test_pdf_backend_uses_pymupdf_module_name():
+    assert rp._import_pymupdf().__name__ == "pymupdf"
