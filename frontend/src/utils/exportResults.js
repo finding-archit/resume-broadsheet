@@ -166,7 +166,7 @@ export async function downloadPdf(result) {
   doc.setTextColor(...INK)
   doc.setFont('times', 'bolditalic')
   doc.setFontSize(30)
-  doc.text('The Resume Matcher', M, 66)
+  doc.text('The Resume Broadsheet', M, 66)
   doc.setDrawColor(...INK)
   doc.setLineWidth(2)
   doc.line(M, 78, W - M, 78)

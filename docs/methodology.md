@@ -1,4 +1,4 @@
-# Project Methodology: AI Resume Matcher Using NLP
+# Project Methodology: Resume Broadsheet (NLP résumé matcher)
 
 This document explains the design decisions behind each stage of the pipeline, for the project report and viva.
 

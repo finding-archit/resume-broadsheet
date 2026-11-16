@@ -57,23 +57,70 @@ function layout(result) {
         .distance((l) => (l.kind === 'hub' ? (l.outer ? 105 : 58) : 70))
         .strength((l) => (l.kind === 'hub' ? 0.7 : 0.15)),
     )
-    .force('collide', forceCollide((d) => (d.kind === 'hub' ? 36 : 17 + Math.min(d.label.length, 24) * 1.15)).iterations(2))
+    .force('collide', forceCollide((d) => (d.kind === 'hub' ? Math.max(30, d.label.length * 4.5) : 20)).iterations(2))
     .force('x', forceX(0).strength(0.05))
     .force('y', forceY(0).strength(0.09))
     .force('radial', forceRadial((d) => (d.status === 'additional' ? outer : 0), 0, 0).strength((d) => (d.status === 'additional' ? 0.12 : 0)))
     .stop()
     .tick(420)
 
-  // Bounds include an estimate of each label's width so names are never clipped.
-  const right = nodes.map((n) => n.x + (n.kind === 'hub' ? n.label.length * 4.5 : 16 + n.label.length * 7.9))
-  const left = nodes.map((n) => n.x - (n.kind === 'hub' ? n.label.length * 4.5 : 12))
-  const ys = nodes.map((n) => n.y)
-  const pad = 24
-  const minX = Math.min(...left) - pad
-  const minY = Math.min(...ys) - pad - 20
-  const width = Math.max(...right) - minX + pad
-  const height = Math.max(...ys) - minY + pad
+  placeLabels(nodes)
+  // Bounds cover every node and its placed label, so names are never clipped.
+  const boxes = nodes.flatMap((n) => [n.box, [n.x - 10, n.y - 10, 20, 20]])
+  const pad = 20
+  const minX = Math.min(...boxes.map((b) => b[0])) - pad
+  const minY = Math.min(...boxes.map((b) => b[1])) - pad
+  const width = Math.max(...boxes.map((b) => b[0] + b[2])) - minX + pad
+  const height = Math.max(...boxes.map((b) => b[1] + b[3])) - minY + pad
   return { nodes, links, viewBox: `${minX} ${minY} ${width} ${height}` }
+}
+
+const overlap = (a, b) =>
+  Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0])) *
+  Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]))
+
+/**
+ * Greedy label placement: hub labels sit above their square; each skill label
+ * tries right, left, above and below its node and takes the first spot that
+ * collides with no other label or node (or the least-overlapping one).
+ */
+function placeLabels(nodes) {
+  const taken = nodes.map((n) => [n.x - 10, n.y - 10, 20, 20])
+  const cost = (box, own) => taken.reduce((s, t, i) => s + (i === own ? 0 : overlap(box, t)), 0)
+
+  for (const n of nodes.filter((d) => d.kind === 'hub')) {
+    const w = n.label.length * 8.6
+    n.box = [n.x - w / 2, n.y - 29, w, 19]
+    n.lx = 0
+    n.ly = -12
+    n.anchor = 'middle'
+    taken.push(n.box)
+  }
+
+  const order = { missing: 0, matched: 1, alternative: 2, additional: 3 }
+  const skills = nodes.filter((d) => d.kind === 'skill').sort((a, b) => order[a.status] - order[b.status])
+  for (const n of skills) {
+    const own = nodes.indexOf(n)
+    const w = n.label.length * (n.status === 'additional' ? 7 : 7.9)
+    const options = [
+      { box: [n.x + 13, n.y - 9, w, 15], lx: 13, ly: 4.5, anchor: 'start' },
+      { box: [n.x - 13 - w, n.y - 9, w, 15], lx: -13, ly: 4.5, anchor: 'end' },
+      { box: [n.x - w / 2, n.y - 29, w, 15], lx: 0, ly: -16, anchor: 'middle' },
+      { box: [n.x - w / 2, n.y + 13, w, 15], lx: 0, ly: 25, anchor: 'middle' },
+    ]
+    let best = options[0]
+    let bestCost = Infinity
+    for (const o of options) {
+      const c = cost(o.box, own)
+      if (c < bestCost) {
+        best = o
+        bestCost = c
+      }
+      if (c === 0) break
+    }
+    Object.assign(n, { box: best.box, lx: best.lx, ly: best.ly, anchor: best.anchor })
+    taken.push(best.box)
+  }
 }
 
 export default function SkillConstellation({ result }) {
@@ -171,8 +218,9 @@ export default function SkillConstellation({ result }) {
               />
               {n.status === 'matched' && n.evidence === 'listed' && <circle r={13} fill="none" stroke={palette.ochre} strokeWidth="1.5" strokeDasharray="2 2.5" />}
               <text
-                x={13}
-                y={4.5}
+                x={n.lx}
+                y={n.ly}
+                textAnchor={n.anchor}
                 fontFamily="JetBrains Mono Variable, monospace"
                 fontSize={n.status === 'additional' ? 11.5 : 13}
                 fontWeight={n.status === 'missing' ? 700 : 500}

@@ -1,4 +1,4 @@
-"""Central configuration for the AI Resume Matcher backend.
+"""Central configuration for the Resume Broadsheet backend.
 
 All values can be overridden with environment variables (see .env.example).
 No secrets or paid API keys are required.

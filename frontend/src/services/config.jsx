@@ -5,7 +5,7 @@ import { DEFAULT_BANDS } from '../utils/format.js'
 // Mirrors the backend defaults so the UI still renders sensibly if /api/config
 // is unreachable. Live values replace these as soon as the backend answers.
 export const DEFAULT_CONFIG = {
-  version: '1.0.0',
+  version: '2.0.0',
   weights: { tfidf: 0.6, skill_coverage: 0.4 },
   bands: DEFAULT_BANDS,
   max_file_size_mb: 5,

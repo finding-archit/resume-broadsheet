@@ -1,31 +1,59 @@
-# Python
+# ---------------------------------------------------------------- Python
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+*.egg-info/
+.eggs/
+build/
+pip-wheel-metadata/
+
+# Test and tooling caches
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
-*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.tox/
 
-# Node
+# ---------------------------------------------------------------- Node / Vite
 node_modules/
 dist/
+dist-ssr/
+.vite/
+coverage/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Environment / secrets
+# ---------------------------------------------------------------- Environment / secrets
 .env
 .env.*
 !.env.example
 
-# Logs
+# ---------------------------------------------------------------- Logs and temp files
 *.log
+*.tmp
+*.swp
 
-# OS / editors
+# ---------------------------------------------------------------- OS / editors
 .DS_Store
+Thumbs.db
+Desktop.ini
 .vscode/
 .idea/
+*.code-workspace
 
-# Never commit real resumes
+# ---------------------------------------------------------------- Privacy
+# Never commit real résumés or exported reports. Fictional samples live in sample_data/.
 uploads/
 *.real.pdf
 *.real.docx
+resume-match-report-*.csv
+resume-match-report-*.pdf

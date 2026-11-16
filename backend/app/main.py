@@ -24,7 +24,7 @@ if hasattr(MultiPartParser, "spool_max_size"):
     MultiPartParser.spool_max_size = settings.max_file_size_bytes
 
 app = FastAPI(
-    title="AI Resume Matcher API",
+    title="Resume Broadsheet API",
     version=__version__,
     description=(
         "Compares a resume with a job description using NLP (text preprocessing, "
@@ -51,4 +51,4 @@ app.include_router(router)
 
 @app.get("/", include_in_schema=False)
 def root():
-    return {"message": "AI Resume Matcher API. See /docs for interactive documentation."}
+    return {"message": "Resume Broadsheet API. See /docs for interactive documentation."}

@@ -54,13 +54,13 @@ export function Masthead() {
         </div>
 
         <div className={`flex items-end justify-between gap-6 ${home ? 'py-7 sm:py-9' : 'py-4'}`}>
-          <Link to="/" className="group block" aria-label="The Resume Matcher, home">
+          <Link to="/" className="group block" aria-label="The Resume Broadsheet, home">
             <span
-              className={`headline block transition-all ${home ? 'text-5xl sm:text-7xl lg:text-[5.6rem]' : 'text-3xl sm:text-4xl'}`}
+              className={`headline block transition-all ${home ? 'text-[2.6rem] sm:text-7xl lg:text-[5.6rem]' : 'text-3xl sm:text-4xl'}`}
               style={{ fontVariationSettings: '"SOFT" 30, "WONK" 1, "opsz" 144' }}
             >
               <span className="mr-2 align-top text-[0.42em] font-medium italic text-muted">The</span>
-              Resume<span className="text-accent">·</span>Matcher
+              Resume<span className="text-accent">·</span>Broadsheet
             </span>
           </Link>
           <p className={`hidden max-w-[17rem] text-right font-display italic leading-snug text-ink2 sm:block ${home ? 'text-base' : 'text-sm'}`}>
@@ -109,7 +109,7 @@ export function Colophon() {
     <footer className="no-print mt-24 border-t-[3px] border-double border-rule">
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:grid-cols-3 sm:px-8">
         <div>
-          <p className="headline text-2xl">The Resume·Matcher</p>
+          <p className="headline text-2xl">The Resume·Broadsheet</p>
           <p className="mt-2 text-sm text-ink2">An NLP mini project in computer science and engineering. Version {config.version}.</p>
         </div>
         <div className="text-sm text-ink2">

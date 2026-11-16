@@ -32,7 +32,7 @@ const INDEX = [
 
 function Specimen() {
   // Static illustration built from the bundled sample (python developer vs backend post).
-  const score = 43
+  const score = 46.3
   const angle = Math.PI * (1 - score / 100)
   const nx = 100 + 74 * Math.cos(angle)
   const ny = 100 - 74 * Math.sin(angle)
@@ -54,7 +54,7 @@ function Specimen() {
           <circle cx="100" cy="100" r="5" fill="rgb(var(--ink))" />
         </svg>
         <div className="-mt-1 text-center">
-          <span className="headline num text-5xl">43.0</span>
+          <span className="headline num text-5xl">{score.toFixed(1)}</span>
         </div>
         <span className="absolute right-0 top-2 rotate-[-7deg] border-[3px] border-double border-blueprint px-2 py-0.5 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-blueprint">
           Good match
